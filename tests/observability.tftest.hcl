@@ -1,0 +1,259 @@
+mock_provider "google" {
+  mock_resource "google_logging_organization_sink" {
+    defaults = {
+      writer_identity = "serviceAccount:service-org-123456789012@gcp-sa-logging.iam.gserviceaccount.com"
+    }
+  }
+
+  mock_resource "google_logging_project_bucket_config" {
+    defaults = {
+      id = "projects/cmn-observability-c3d4/locations/europe-west4/buckets/cmn-cf-observability"
+    }
+  }
+
+  mock_data "google_project" {
+    defaults = {
+      number = "333333333333"
+    }
+  }
+
+  mock_resource "google_monitoring_notification_channel" {
+    defaults = {
+      id = "projects/cmn-observability-c3d4/notificationChannels/1234567890"
+    }
+  }
+}
+
+mock_provider "time" {}
+
+variables {
+  organization_id = "123456789012"
+  domain          = "example.com"
+  folders = {
+    development   = { id = "folders/100000000001", short_name = "dev" }
+    certification = { id = "folders/100000000002", short_name = "cert" }
+    production    = { id = "folders/100000000003", short_name = "prod" }
+    common        = { id = "folders/111111111111", short_name = "cmn", common = true }
+    legacy        = { id = "folders/100000000004" }
+  }
+  observability_project_id = "cmn-observability-c3d4"
+}
+
+run "organization_sink" {
+  assert {
+    condition = alltrue([
+      google_logging_organization_sink.observability.name == "cmn-cf-observability-project",
+      google_logging_organization_sink.observability.org_id == "123456789012",
+      google_logging_organization_sink.observability.destination == "logging.googleapis.com/projects/cmn-observability-c3d4",
+      google_logging_organization_sink.observability.include_children,
+      google_logging_organization_sink.observability.intercept_children,
+      google_logging_organization_sink.observability.filter == null,
+    ])
+    error_message = "The organisation-level sink must route all the logs of the organisation, intercepting them, to the Observability project."
+  }
+
+  assert {
+    condition = (
+      length(google_logging_organization_sink.observability.exclusions) == 1 &&
+      google_logging_organization_sink.observability.exclusions[0].name == "apps-script" &&
+      google_logging_organization_sink.observability.exclusions[0].filter == "resource.type=\"app_script_function\""
+    )
+    error_message = "The organisation-level sink must exclude the Apps Script logs by default."
+  }
+
+  assert {
+    condition = (
+      google_project_iam_member.organization_sink.project == "cmn-observability-c3d4" &&
+      google_project_iam_member.organization_sink.role == "roles/logging.logWriter" &&
+      google_project_iam_member.organization_sink.member == "serviceAccount:service-org-123456789012@gcp-sa-logging.iam.gserviceaccount.com" &&
+      output.organization_sink_writer_identity == google_project_iam_member.organization_sink.member
+    )
+    error_message = "The organisation-level sink's writer identity must be a Logs Writer in the Observability project."
+  }
+}
+
+run "log_bucket" {
+  assert {
+    condition = alltrue([
+      google_logging_project_bucket_config.observability.project == "cmn-observability-c3d4",
+      google_logging_project_bucket_config.observability.bucket_id == "cmn-cf-observability",
+      google_logging_project_bucket_config.observability.location == "europe-west4",
+      google_logging_project_bucket_config.observability.retention_days == 30,
+      google_logging_project_bucket_config.observability.enable_analytics,
+    ])
+    error_message = "The centralised logging bucket must be in the Observability project's region, with Log Analytics and 30 days retention by default."
+  }
+
+  assert {
+    condition = (
+      google_logging_linked_dataset.observability.link_id == "cmn_cf_observability" &&
+      google_logging_linked_dataset.observability.bucket == output.log_bucket &&
+      google_logging_linked_dataset.observability.location == "europe-west4"
+    )
+    error_message = "The linked dataset must be linked to the centralised logging bucket."
+  }
+
+  assert {
+    condition = (
+      google_logging_project_sink.observability.name == "cmn-cf-observability-bucket" &&
+      google_logging_project_sink.observability.project == "cmn-observability-c3d4" &&
+      google_logging_project_sink.observability.destination == "logging.googleapis.com/${output.log_bucket}" &&
+      google_logging_project_sink.observability.filter == null
+    )
+    error_message = "The project-level sink must route all the logs of the Observability project to the centralised logging bucket."
+  }
+
+  assert {
+    condition = (
+      google_logging_project_sink.default.name == "_Default" &&
+      google_logging_project_sink.default.disabled &&
+      google_logging_project_sink.default.filter == "NOT LOG_ID(\"cloudaudit.googleapis.com/activity\") AND NOT LOG_ID(\"externalaudit.googleapis.com/activity\") AND NOT LOG_ID(\"cloudaudit.googleapis.com/system_event\") AND NOT LOG_ID(\"externalaudit.googleapis.com/system_event\") AND NOT LOG_ID(\"cloudaudit.googleapis.com/access_transparency\") AND NOT LOG_ID(\"externalaudit.googleapis.com/access_transparency\")"
+    )
+    error_message = "The Observability project's _Default sink must be disabled, keeping its default filter."
+  }
+
+  assert {
+    condition = (
+      google_logging_log_view_iam_member.viewers.bucket == "cmn-cf-observability" &&
+      google_logging_log_view_iam_member.viewers.name == "_AllLogs" &&
+      google_logging_log_view_iam_member.viewers.role == "roles/logging.viewAccessor" &&
+      google_logging_log_view_iam_member.viewers.member == "group:gcp-cmn-viewers@example.com"
+    )
+    error_message = "The common environment's viewers must be able to read all the logs of the bucket."
+  }
+}
+
+run "sink_errors_alert" {
+  assert {
+    condition = (
+      google_logging_metric.sink_errors.filter == "resource.type=logging_sink AND resource.labels.name:cmn-cf-observability AND severity>=ERROR" &&
+      google_logging_metric.sink_errors.bucket_name == output.log_bucket
+    )
+    error_message = "The sink errors metric must count the errors of both sinks in the centralised logging bucket."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.sink_errors.display_name == "[example.com] cmn-cf-observability - logging sinks errors" &&
+      google_monitoring_alert_policy.sink_errors.notification_channels == tolist([output.sres_notification_channel])
+    )
+    error_message = "The sink errors alert must notify the common environment's SREs."
+  }
+
+  assert {
+    condition     = google_monitoring_notification_channel.sres.labels.email_address == "gcp-cmn-sres@example.com"
+    error_message = "The SREs notification channel must email the common environment's SREs group."
+  }
+}
+
+run "custom_settings" {
+  variables {
+    region               = "europe-west1"
+    log_retention_days   = 400
+    log_exclusions       = {}
+    sres_group_suffix    = "oncall"
+    viewers_group_suffix = "auditors"
+  }
+
+  assert {
+    condition = (
+      google_logging_project_bucket_config.observability.location == "europe-west1" &&
+      google_logging_project_bucket_config.observability.retention_days == 400 &&
+      length(google_logging_organization_sink.observability.exclusions) == 0
+    )
+    error_message = "The bucket's region and retention and the sink's exclusions must follow the inputs."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_notification_channel.sres.labels.email_address == "gcp-cmn-oncall@example.com" &&
+      google_logging_log_view_iam_member.viewers.member == "group:gcp-cmn-auditors@example.com"
+    )
+    error_message = "The groups must follow the suffix inputs."
+  }
+}
+
+run "no_perimeter" {
+  command = plan
+
+  assert {
+    condition = (
+      length(google_access_context_manager_service_perimeter_ingress_policy.organization_sink) == 0 &&
+      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink) == 0
+    )
+    error_message = "No ingress rule must be added without a perimeter."
+  }
+}
+
+run "perimeter_dry_run" {
+  variables {
+    vpc_service_controls = {
+      perimeter_name = "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production"
+    }
+  }
+
+  assert {
+    condition = (
+      length(google_access_context_manager_service_perimeter_ingress_policy.organization_sink) == 0 &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].perimeter == "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production" &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_from[0].sources[0].access_level == "*" &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_to[0].resources == tolist(["projects/333333333333"]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_to[0].operations[0].service_name == "logging.googleapis.com"
+    )
+    error_message = "In dry-run mode, the organisation-level sink's ingress rule into the Observability project must be added to the dry-run configuration only."
+  }
+}
+
+run "perimeter_enforced" {
+  variables {
+    vpc_service_controls = {
+      perimeter_name = "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production"
+      mode           = "enforced"
+    }
+  }
+
+  assert {
+    condition = (
+      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink) == 1 &&
+      google_access_context_manager_service_perimeter_ingress_policy.organization_sink[0].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
+      google_access_context_manager_service_perimeter_ingress_policy.organization_sink[0].ingress_to[0].resources == tolist(["projects/333333333333"])
+    )
+    error_message = "In enforced mode, the ingress rule must be added to both configurations."
+  }
+}
+
+run "invalid_perimeter" {
+  command = plan
+
+  variables {
+    vpc_service_controls = {
+      perimeter_name = "cloud_foundations_production"
+      mode           = "enforce"
+    }
+  }
+
+  expect_failures = [var.vpc_service_controls]
+}
+
+run "no_common_folder" {
+  command = plan
+
+  variables {
+    folders = {
+      development = { id = "folders/100000000001", short_name = "dev" }
+    }
+  }
+
+  expect_failures = [var.folders]
+}
+
+run "invalid_retention" {
+  command = plan
+
+  variables {
+    log_retention_days = 0
+  }
+
+  expect_failures = [var.log_retention_days]
+}
