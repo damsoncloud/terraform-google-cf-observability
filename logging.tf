@@ -111,11 +111,13 @@ resource "google_logging_metric" "sink_errors" {
   }
 }
 
-# A new metric is not available to alerting policies immediately
-resource "time_sleep" "sink_errors_metric_propagation" {
+# A new metric is not available to alerting policies immediately; replaced, and so waits again, when a metric is added
+resource "time_sleep" "metrics_propagation" {
   create_duration = "60s"
 
-  depends_on = [google_logging_metric.sink_errors]
+  triggers = {
+    metrics = join(",", concat([google_logging_metric.sink_errors.id], [for metric in google_logging_metric.security_alerts : metric.id]))
+  }
 }
 
 resource "google_monitoring_alert_policy" "sink_errors" {
@@ -154,5 +156,5 @@ resource "google_monitoring_alert_policy" "sink_errors" {
     notification_prompts = ["OPENED"]
   }
 
-  depends_on = [time_sleep.sink_errors_metric_propagation]
+  depends_on = [time_sleep.metrics_propagation]
 }

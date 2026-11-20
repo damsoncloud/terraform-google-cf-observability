@@ -103,3 +103,41 @@ variable "vpc_service_controls" {
     error_message = "The mode must be dry_run or enforced."
   }
 }
+
+variable "security_alerts" {
+  description = "Alerts on security-relevant audit log entries of the whole organisation, by a key of lowercase letters, digits and underscores, notified to the common environment's SREs group: `display_name`; `filter`, the Logging query of the entries; `severity`, `CRITICAL`, `ERROR` or `WARNING`; `description`, the alert's guidance. The defaults alert on changes of the organisation and folder IAM policies, on the creation or upload of service account keys, and on changes of organisation policies and custom constraints, attempts denied included."
+  type = map(object({
+    display_name = string
+    filter       = string
+    severity     = optional(string, "WARNING")
+    description  = optional(string, "")
+  }))
+  default = {
+    organization_iam = {
+      display_name = "organisation or folder IAM policy changed"
+      filter       = "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND protoPayload.serviceName=\"cloudresourcemanager.googleapis.com\" AND protoPayload.methodName=\"SetIamPolicy\" AND resource.type=(\"organization\" OR \"folder\")"
+      description  = "The organisation and folder IAM policies are set authoritatively by the foundations, so a change made otherwise is reverted by their next deployment."
+    }
+    service_account_keys = {
+      display_name = "service account key created"
+      filter       = "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND protoPayload.serviceName=\"iam.googleapis.com\" AND protoPayload.methodName=(\"google.iam.admin.v1.CreateServiceAccountKey\" OR \"google.iam.admin.v1.UploadServiceAccountKey\")"
+      description  = "Service account keys are long-lived credentials, whose creation is denied by the organisation policies outside the legacy folder."
+    }
+    organization_policies = {
+      display_name = "organisation policy changed"
+      filter       = "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND ((protoPayload.serviceName=\"orgpolicy.googleapis.com\" AND protoPayload.methodName=(\"google.cloud.orgpolicy.v2.OrgPolicy.CreatePolicy\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.UpdatePolicy\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.DeletePolicy\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.CreateCustomConstraint\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.UpdateCustomConstraint\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.DeleteCustomConstraint\")) OR (protoPayload.serviceName=\"cloudresourcemanager.googleapis.com\" AND protoPayload.methodName=(\"SetOrgPolicy\" OR \"ClearOrgPolicy\")))"
+      description  = "The organisation policies are part of the foundations' security baseline; an unexpected change, or an exception, weakens it."
+    }
+  }
+  nullable = false
+
+  validation {
+    condition     = alltrue([for key in keys(var.security_alerts) : can(regex("^[a-z][a-z0-9_]*$", key))])
+    error_message = "The security_alerts keys must be lowercase letters, digits and underscores, starting with a letter."
+  }
+
+  validation {
+    condition     = alltrue([for alert in values(var.security_alerts) : contains(["CRITICAL", "ERROR", "WARNING"], alert.severity)])
+    error_message = "The security_alerts severities must be CRITICAL, ERROR or WARNING."
+  }
+}

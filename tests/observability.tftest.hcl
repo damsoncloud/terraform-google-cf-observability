@@ -236,6 +236,75 @@ run "invalid_perimeter" {
   expect_failures = [var.vpc_service_controls]
 }
 
+run "security_alerts" {
+  assert {
+    condition     = toset(keys(google_logging_metric.security_alerts)) == toset(["organization_iam", "organization_policies", "service_account_keys"])
+    error_message = "The organisation and folder IAM, service account key and organisation policy alerts must be created by default."
+  }
+
+  assert {
+    condition = alltrue([for key, metric in google_logging_metric.security_alerts : (
+      metric.name == "cf/security/${key}" &&
+      metric.bucket_name == output.log_bucket &&
+      metric.label_extractors["principal"] == "EXTRACT(protoPayload.authenticationInfo.principalEmail)"
+    )])
+    error_message = "The security metrics must count the entries in the centralised logging bucket, with the principal."
+  }
+
+  assert {
+    condition     = strcontains(google_logging_metric.security_alerts["organization_iam"].filter, "resource.type=(\"organization\" OR \"folder\")")
+    error_message = "The IAM alert must cover the organisation and the folders."
+  }
+
+  assert {
+    condition = alltrue([for key, policy in google_monitoring_alert_policy.security_alerts : (
+      policy.notification_channels == tolist([output.sres_notification_channel]) &&
+      policy.severity == "WARNING" &&
+      policy.conditions[0].condition_prometheus_query_language[0].query == "{\"logging.googleapis.com/user/cf/security/${key}\"} > 0"
+    )])
+    error_message = "Each security alert must notify the common environment's SREs when its metric counts an entry."
+  }
+
+  assert {
+    condition     = google_monitoring_alert_policy.security_alerts["service_account_keys"].display_name == "[example.com] cmn-cf-observability - service account key created"
+    error_message = "The security alerts must be named after the domain and the module's prefix."
+  }
+}
+
+run "custom_security_alerts" {
+  command = plan
+
+  variables {
+    security_alerts = {
+      firewall = {
+        display_name = "firewall rule changed"
+        filter       = "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND resource.type=\"gce_firewall_rule\""
+        severity     = "ERROR"
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      toset(keys(google_monitoring_alert_policy.security_alerts)) == toset(["firewall"]) &&
+      google_monitoring_alert_policy.security_alerts["firewall"].severity == "ERROR"
+    )
+    error_message = "The security alerts must follow the input."
+  }
+}
+
+run "invalid_security_alert" {
+  command = plan
+
+  variables {
+    security_alerts = {
+      "Firewall" = { display_name = "firewall", filter = "resource.type=\"gce_firewall_rule\"", severity = "HIGH" }
+    }
+  }
+
+  expect_failures = [var.security_alerts, var.security_alerts]
+}
+
 run "no_common_folder" {
   command = plan
 
