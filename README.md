@@ -4,16 +4,16 @@ Terraform module of the Damson Cloud GCP Cloud Foundations creating the observab
 
 * centralised logging: an intercepting organisation-level log sink routes the logs to the Observability project, whose sink routes them to a Log Analytics-enabled log bucket with
   a linked BigQuery dataset, readable by the common environment's viewers group,
-* optionally, the ingress rules of the organisation-level log sink, the Security Command Centre notifications and the Azure integration, added to the VPC Service Controls perimeter
-  of cf-organization,
-* optionally, the Microsoft Sentinel and Defender for Cloud integration ([`modules/azure-integration`](modules/azure-integration)), with the Defender for Cloud service accounts
-  and organisation roles of cf-organization's `defender-for-cloud` submodule,
 * alerts to the common environment's SREs group on the centralised logging sinks' errors and on security-relevant changes (organisation and folder IAM policies, service account
   keys, organisation policies), counted by metrics scoped to the centralised logging bucket, as log-based alerting policies cannot scan the entries of the organisation, the folders
   or the other projects,
+* the [billing disabler](https://github.com/damsoncloud/gcp.billing-disabler): a Cloud Run service, running as cf-organization's service account, to which the budget notifications
+  of the projects enabling it in cf-gcp-project are pushed, with alerts on its events to the SREs and, for the disabled projects, to the billing administrators,
 * email notifications of the critical and high Security Command Centre findings ([`modules/scc-notifications`](modules/scc-notifications)), set up by default,
-* the [billing disabler](https://github.com/damsoncloud/gcp.billing-disabler): a Cloud Run service, running as cf-organization's service account, to which the budget
-  notifications of the projects enabling it in cf-gcp-project are pushed, with alerts on its events to the SREs and, for the disabled projects, to the billing administrators.
+* optionally, the Microsoft Sentinel and Defender for Cloud integration ([`modules/azure-integration`](modules/azure-integration)), with the Defender for Cloud service accounts and
+  organisation roles of cf-organization's `defender-for-cloud` submodule,
+* optionally, the BigQuery dataset receiving the Google Drive inventory export from Google Workspace ([`modules/drive-inventory-export`](modules/drive-inventory-export)),
+* optionally, the ingress rules of the flows above into the VPC Service Controls perimeter of cf-organization.
 
 ## Usage
 
@@ -35,6 +35,9 @@ module "observability" {
 
 Pin an exact version. New versions are published as immutable GitHub releases with `vX.Y.Z` tags, following [semantic versioning](https://semver.org/).
 
+See [`examples/basic`](examples/basic) for the module applied with cf-hierarchy, cf-bootstrap and cf-organization, and [`examples/complete`](examples/complete) for the
+perimeter's ingress rules, the Azure integration and the Drive inventory export.
+
 <!-- BEGIN_TF_DOCS -->
 <!-- markdownlint-capture -->
 <!-- markdownlint-disable MD013 -->
@@ -49,6 +52,7 @@ Pin an exact version. New versions are published as immutable GitHub releases wi
 | billing\_disabler\_image\_tag | Tag of the billing disabler's container image, pinned to a reviewed version. | `string` | `"1.1.6"` | no |
 | billing\_notification\_channel | ID of the billing administrators' notification channel (`projects/<project>/notificationChannels/<id>`), e.g. the `billing_notification_channel` output of cf-organization, notified of the projects whose billing is disabled. | `string` | n/a | yes |
 | domain | Domain of the organisation's groups, e.g. `example.com` for `gcp-cmn-sres@example.com`. It prefixes the alerting policies' names, to tell apart the alerts of several organisations. | `string` | n/a | yes |
+| drive\_inventory\_export | Google Drive inventory export from Google Workspace into a BigQuery dataset of the Observability project ([`modules/drive-inventory-export`](modules/drive-inventory-export)); not set up when null: `service_account`, the email of the Google Workspace service account exporting the inventory, which the org-policies submodule of cf-organization must allow. | ```object({ service_account = string })``` | `null` | no |
 | folders | The folders by folder name, e.g. the `folders` output of cf-hierarchy: `id`, the resource name (`folders/<id>`); `short_name`, the environment's short name, null for folders other than environments; `common`, whether it is the common environment. The common environment's short name prefixes the resources' names (`<common short name>-cf-observability`) and names its groups. | ```map(object({ id = string short_name = optional(string) common = optional(bool, false) }))``` | n/a | yes |
 | log\_exclusions | Exclusions of the organisation-level log sink by name: `filter`, the logs not routed to the Observability project; `description`. | ```map(object({ filter = string description = optional(string) }))``` | ```{ "apps-script": { "description": "Excludes the Apps Script logs.", "filter": "resource.type = \"app_script_function\"" } }``` | no |
 | log\_retention\_days | Retention of the centralised logging bucket, in days. | `number` | `30` | no |
@@ -67,7 +71,9 @@ Pin an exact version. New versions are published as immutable GitHub releases wi
 
 | Name | Description |
 | ---- | ----------- |
+| azure\_workload\_identity\_pool | Resource name of the Workload Identity pool of the Azure tenant, for the Microsoft Sentinel and Defender for Cloud connectors created in Azure; null when the Azure integration is not set up. |
 | billing\_disabler\_topic | ID of the billing disabler's topic (`projects/<project>/topics/<name>`), to which cf-gcp-project connects the budgets of the projects enabling the billing disabler. |
+| drive\_inventory\_dataset | ID of the BigQuery dataset receiving the Google Drive inventory export, the export's destination in the Google Workspace admin console; null when not set up. |
 | log\_bucket | ID of the centralised logging bucket (`projects/<project>/locations/<region>/buckets/<bucket>`). |
 | log\_linked\_dataset | ID of the BigQuery dataset linked to the centralised logging bucket. |
 | organization\_sink\_writer\_identity | Writer identity of the organisation-level log sink, which writes the logs into the Observability project. |

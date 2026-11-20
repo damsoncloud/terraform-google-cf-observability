@@ -21,6 +21,14 @@ locals {
       }
     },
     { for title in local.azure_integration_rule_titles : title => module.azure_integration[0].perimeter_ingress_rules[title] },
+    var.drive_inventory_export == null ? {} : {
+      "Google Drive inventory export" = {
+        identities = ["serviceAccount:${var.drive_inventory_export.service_account}"]
+        resources  = ["projects/${data.google_project.observability.number}"]
+        service    = "bigquery.googleapis.com"
+        method     = "*"
+      }
+    },
   )
 
   # Known while planning, unlike the submodule's rules, as for_each requires

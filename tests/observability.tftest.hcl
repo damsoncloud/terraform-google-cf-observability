@@ -535,7 +535,7 @@ run "azure_integration" {
 
   assert {
     condition = (
-      module.azure_integration[0].workload_identity_pool != null &&
+      output.azure_workload_identity_pool == module.azure_integration[0].workload_identity_pool &&
       toset(keys(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules)) == toset([
         "Centralised logging organisation sink",
         "Security Command Centre finding notifications",
@@ -647,6 +647,60 @@ run "invalid_azure_tenant" {
   }
 
   expect_failures = [var.azure_integration]
+}
+
+run "drive_inventory_export" {
+  variables {
+    drive_inventory_export = { service_account = "c-123456789012345678901@gcp-sa-statefulreporting.iam.gserviceaccount.com" }
+    vpc_service_controls = {
+      perimeter_name = "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production"
+    }
+  }
+
+  assert {
+    condition = (
+      module.drive_inventory_export[0].dataset == output.drive_inventory_dataset &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Google Drive inventory export"].ingress_from[0].identities == tolist([
+        "serviceAccount:c-123456789012345678901@gcp-sa-statefulreporting.iam.gserviceaccount.com",
+      ]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Google Drive inventory export"].ingress_to[0].operations[0].service_name == "bigquery.googleapis.com"
+    )
+    error_message = "The Drive inventory export must get its dataset and its ingress rule into the perimeter."
+  }
+}
+
+run "drive_inventory_export_submodule" {
+  command = plan
+
+  module {
+    source = "./modules/drive-inventory-export"
+  }
+
+  variables {
+    project_id      = "cmn-observability-c3d4"
+    region          = "europe-west4"
+    dataset_id      = "cmn_cf_drive_inventory"
+    service_account = "c-123456789012345678901@gcp-sa-statefulreporting.iam.gserviceaccount.com"
+  }
+
+  assert {
+    condition = (
+      google_bigquery_dataset.drive_inventory.location == "europe-west4" &&
+      google_bigquery_dataset_iam_member.drive_inventory.role == "roles/bigquery.dataEditor" &&
+      google_project_iam_member.drive_inventory.role == "roles/bigquery.jobUser" &&
+      google_project_iam_member.drive_inventory.member == "serviceAccount:c-123456789012345678901@gcp-sa-statefulreporting.iam.gserviceaccount.com"
+    )
+    error_message = "The export's service account must edit the dataset and run BigQuery jobs."
+  }
+}
+
+run "no_drive_inventory_export" {
+  command = plan
+
+  assert {
+    condition     = length(module.drive_inventory_export) == 0 && output.drive_inventory_dataset == null
+    error_message = "The Drive inventory export must not be set up by default."
+  }
 }
 
 run "no_common_folder" {

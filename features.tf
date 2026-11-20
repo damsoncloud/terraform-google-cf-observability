@@ -26,3 +26,13 @@ module "azure_integration" {
   sentinel           = var.azure_integration.sentinel
   defender_for_cloud = var.azure_integration.defender_for_cloud
 }
+
+module "drive_inventory_export" {
+  source = "./modules/drive-inventory-export"
+  count  = var.drive_inventory_export == null ? 0 : 1
+
+  project_id      = var.observability_project_id
+  region          = var.region
+  dataset_id      = replace("${local.common_short_name}-cf-drive-inventory", "-", "_")
+  service_account = var.drive_inventory_export.service_account
+}

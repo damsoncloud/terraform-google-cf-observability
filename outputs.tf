@@ -27,3 +27,13 @@ output "billing_disabler_topic" {
   description = "ID of the billing disabler's topic (`projects/<project>/topics/<name>`), to which cf-gcp-project connects the budgets of the projects enabling the billing disabler."
   value       = google_pubsub_topic.billing_disabler.id
 }
+
+output "drive_inventory_dataset" {
+  description = "ID of the BigQuery dataset receiving the Google Drive inventory export, the export's destination in the Google Workspace admin console; null when not set up."
+  value       = one(module.drive_inventory_export[*].dataset)
+}
+
+output "azure_workload_identity_pool" {
+  description = "Resource name of the Workload Identity pool of the Azure tenant, for the Microsoft Sentinel and Defender for Cloud connectors created in Azure; null when the Azure integration is not set up."
+  value       = one(module.azure_integration[*].workload_identity_pool)
+}
