@@ -11,6 +11,12 @@ mock_provider "google" {
     }
   }
 
+  mock_resource "google_logging_project_sink" {
+    defaults = {
+      writer_identity = "serviceAccount:service-333333333333@gcp-sa-logging.iam.gserviceaccount.com"
+    }
+  }
+
   mock_resource "google_scc_v2_organization_notification_config" {
     defaults = {
       service_account = "service-org-123456789012@gcp-sa-scc-notification.iam.gserviceaccount.com"
@@ -441,10 +447,11 @@ run "invalid_scc_notifications" {
   command = plan
 
   variables {
-    scc_notifications = { location = "europe", severities = ["URGENT"] }
+    scc_location      = "europe"
+    scc_notifications = { severities = ["URGENT"] }
   }
 
-  expect_failures = [var.scc_notifications, var.scc_notifications]
+  expect_failures = [var.scc_location, var.scc_notifications]
 }
 
 run "billing_disabler" {
@@ -505,6 +512,141 @@ run "billing_disabler_dry_run" {
     )
     error_message = "The billing disabler's mode and image must follow the inputs."
   }
+}
+
+run "azure_integration" {
+  variables {
+    azure_integration = {
+      tenant_id = "AABBCCDD-1111-2222-3333-444455556666"
+      sentinel  = true
+      defender_for_cloud = {
+        service_accounts = {
+          "mdc-ciem-gcp"            = "mdc-ciem-gcp@cmn-observability-c3d4.iam.gserviceaccount.com"
+          "mdc-log-collection"      = "mdc-log-collection@cmn-observability-c3d4.iam.gserviceaccount.com"
+          "microsoft-defender-cspm" = "microsoft-defender-cspm@cmn-observability-c3d4.iam.gserviceaccount.com"
+        }
+        log_collection_role = "organizations/123456789012/roles/MicrosoftDefenderForCloudLogCollectionCustomRole"
+      }
+    }
+    vpc_service_controls = {
+      perimeter_name = "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production"
+    }
+  }
+
+  assert {
+    condition = (
+      module.azure_integration[0].workload_identity_pool != null &&
+      toset(keys(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules)) == toset([
+        "Centralised logging organisation sink",
+        "Security Command Centre finding notifications",
+        "Microsoft Sentinel",
+        "Microsoft Defender for Cloud",
+      ])
+    )
+    error_message = "The Azure integration's ingress rules must be added to the perimeter."
+  }
+
+  assert {
+    condition = (
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Microsoft Defender for Cloud"].ingress_to[0].resources == tolist(["*"]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Microsoft Defender for Cloud"].ingress_to[0].operations[0].service_name == "*" &&
+      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Microsoft Defender for Cloud"].ingress_to[0].operations[0].method_selectors) == 0 &&
+      contains(
+        google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Microsoft Defender for Cloud"].ingress_from[0].identities,
+        "serviceAccount:microsoft-defender-cspm@cmn-observability-c3d4.iam.gserviceaccount.com"
+      ) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Microsoft Sentinel"].ingress_to[0].operations[0].service_name == "pubsub.googleapis.com"
+    )
+    error_message = "Defender for Cloud must read every project of the perimeter, and Sentinel consume its subscription in the Observability project."
+  }
+}
+
+run "azure_integration_submodule" {
+  module {
+    source = "./modules/azure-integration"
+  }
+
+  variables {
+    project_id     = "cmn-observability-c3d4"
+    project_number = "333333333333"
+    region         = "europe-west4"
+    tenant_id      = "AABBCCDD-1111-2222-3333-444455556666"
+    scc_location   = "eu"
+    sentinel       = true
+    defender_for_cloud = {
+      service_accounts = {
+        "mdc-ciem-gcp"       = "mdc-ciem-gcp@cmn-observability-c3d4.iam.gserviceaccount.com"
+        "mdc-log-collection" = "mdc-log-collection@cmn-observability-c3d4.iam.gserviceaccount.com"
+      }
+      log_collection_role = "organizations/123456789012/roles/MicrosoftDefenderForCloudLogCollectionCustomRole"
+    }
+  }
+
+  assert {
+    condition     = google_iam_workload_identity_pool.azure.workload_identity_pool_id == "aabbccdd111122223333444455556666"
+    error_message = "The Workload Identity pool must be named after the tenant ID, in lowercase and without hyphens."
+  }
+
+  assert {
+    condition = (
+      google_scc_v2_organization_notification_config.sentinel[0].location == "eu" &&
+      google_scc_v2_organization_notification_config.sentinel[0].streaming_config[0].filter == "state=\"ACTIVE\" AND NOT mute=\"MUTED\" AND NOT launch_state=\"LAUNCH_STATE_DEPRECATED\"" &&
+      google_pubsub_subscription_iam_member.sentinel[0].member == google_service_account.sentinel[0].member
+    )
+    error_message = "Sentinel must consume all the organisation's active, unmuted findings."
+  }
+
+  assert {
+    condition = (
+      length(google_iam_workload_identity_pool_provider.defender_for_cloud) == 8 &&
+      toset([for member in google_service_account_iam_member.defender_for_cloud : member.service_account_id]) == toset([
+        "projects/cmn-observability-c3d4/serviceAccounts/mdc-ciem-gcp@cmn-observability-c3d4.iam.gserviceaccount.com",
+        "projects/cmn-observability-c3d4/serviceAccounts/mdc-log-collection@cmn-observability-c3d4.iam.gserviceaccount.com",
+      ]) &&
+      google_pubsub_subscription_iam_member.defender_for_cloud_audit_logs[0].role == "organizations/123456789012/roles/MicrosoftDefenderForCloudLogCollectionCustomRole" &&
+      google_pubsub_subscription_iam_member.defender_for_cloud_audit_logs[0].member == "serviceAccount:mdc-log-collection@cmn-observability-c3d4.iam.gserviceaccount.com" &&
+      google_logging_project_sink.defender_for_cloud_audit_logs[0].filter == "logName:\"cloudaudit.googleapis.com\"" &&
+      google_storage_bucket.defender_for_cloud_log_hydration[0].name == "mdc-log-hydration-cmn-observability-c3d4"
+    )
+    error_message = "Defender for Cloud's service accounts must be federated, and its audit log subscription and log hydration bucket set up."
+  }
+}
+
+run "azure_integration_sentinel_only" {
+  command = plan
+
+  module {
+    source = "./modules/azure-integration"
+  }
+
+  variables {
+    project_id         = "cmn-observability-c3d4"
+    project_number     = "333333333333"
+    region             = "europe-west4"
+    tenant_id          = "aabbccdd-1111-2222-3333-444455556666"
+    scc_location       = "global"
+    sentinel           = true
+    defender_for_cloud = null
+  }
+
+  assert {
+    condition = (
+      length(google_iam_workload_identity_pool_provider.defender_for_cloud) == 0 &&
+      length(google_storage_bucket.defender_for_cloud_log_hydration) == 0 &&
+      length(google_scc_v2_organization_notification_config.sentinel) == 1
+    )
+    error_message = "Only the Sentinel integration must be set up."
+  }
+}
+
+run "invalid_azure_tenant" {
+  command = plan
+
+  variables {
+    azure_integration = { tenant_id = "contoso.onmicrosoft.com" }
+  }
+
+  expect_failures = [var.azure_integration]
 }
 
 run "no_common_folder" {

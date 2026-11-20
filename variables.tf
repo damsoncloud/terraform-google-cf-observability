@@ -178,21 +178,45 @@ variable "security_alerts" {
   }
 }
 
+variable "scc_location" {
+  description = "Security Command Centre location of the organisation's findings, of the email notifications and of the Microsoft Sentinel integration: `eu`, `sa` or `us` with data residency, `global` otherwise."
+  type        = string
+  default     = "eu"
+  nullable    = false
+
+  validation {
+    condition     = contains(["eu", "global", "sa", "us"], var.scc_location)
+    error_message = "The scc_location must be eu, sa, us or global."
+  }
+}
+
 variable "scc_notifications" {
-  description = "Email notifications of the organisation's Security Command Centre findings to the common environment's SREs group ([`modules/scc-notifications`](modules/scc-notifications)); not set up when null, e.g. when the findings reach a SIEM: `location`, the Security Command Centre location, `eu`, `sa` or `us` with data residency, `global` otherwise; `severities`, those of the notified active and unmuted findings."
+  description = "Email notifications of the organisation's Security Command Centre findings to the common environment's SREs group ([`modules/scc-notifications`](modules/scc-notifications)); not set up when null, e.g. when the findings reach a SIEM: `severities`, those of the notified active and unmuted findings."
   type = object({
-    location   = optional(string, "eu")
     severities = optional(list(string), ["CRITICAL", "HIGH"])
   })
   default = {}
 
   validation {
-    condition     = var.scc_notifications == null || contains(["eu", "global", "sa", "us"], try(var.scc_notifications.location, ""))
-    error_message = "The scc_notifications location must be eu, sa, us or global."
-  }
-
-  validation {
     condition     = var.scc_notifications == null || try(length(var.scc_notifications.severities) > 0 && length(setsubtract(var.scc_notifications.severities, ["CRITICAL", "HIGH", "MEDIUM", "LOW"])) == 0, false)
     error_message = "The scc_notifications severities must be CRITICAL, HIGH, MEDIUM or LOW, at least one."
+  }
+}
+
+variable "azure_integration" {
+  description = "Microsoft Sentinel and Defender for Cloud integration through Workload Identity Federation from the customer's Microsoft Entra ID tenant ([`modules/azure-integration`](modules/azure-integration)); not set up when null: `tenant_id`, the tenant's ID; `sentinel`, whether Microsoft Sentinel receives the Security Command Centre findings; `defender_for_cloud`, the Defender for Cloud integration's organisation-level part, the `defender_for_cloud` output of cf-organization, not set up when null."
+  type = object({
+    tenant_id = string
+    sentinel  = optional(bool, false)
+    defender_for_cloud = optional(object({
+      service_accounts    = map(string)
+      log_collection_role = string
+    }))
+  })
+  default = null
+
+  validation {
+    condition     = var.azure_integration == null || can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.azure_integration.tenant_id))
+    error_message = "The azure_integration tenant_id must be a Microsoft Entra ID tenant ID (GUID)."
   }
 }
