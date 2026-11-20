@@ -4,11 +4,12 @@ Terraform module of the Damson Cloud GCP Cloud Foundations creating the observab
 
 * centralised logging: an intercepting organisation-level log sink routes the logs to the Observability project, whose sink routes them to a Log Analytics-enabled
   log bucket with a linked BigQuery dataset, readable by the common environment's viewers group,
-* optionally, the ingress rule of the organisation-level log sink into the Observability project, added to the VPC Service Controls perimeter of cf-organization,
+* optionally, the ingress rules of the organisation-level log sink and the Security Command Centre notifications into the Observability project, added to the VPC
+  Service Controls perimeter of cf-organization,
 * alerts to the common environment's SREs group on the centralised logging sinks' errors and on security-relevant changes (organisation and folder IAM
   policies, service account keys, organisation policies), counted by metrics scoped to the centralised logging bucket, as log-based alerting policies cannot
   scan the entries of the organisation, the folders or the other projects,
-* notifications of critical and high Security Command Centre findings,
+* email notifications of the critical and high Security Command Centre findings ([`modules/scc-notifications`](modules/scc-notifications)), set up by default,
 * the billing disabler.
 
 ## Usage
@@ -22,6 +23,7 @@ module "observability" {
   domain                   = "example.com"
   folders                  = module.hierarchy.folders
   observability_project_id = module.organization.observability_project_id
+  tf_bootstrap_email       = module.bootstrap.tf_bootstrap_email
 }
 ```
 
@@ -41,8 +43,10 @@ Pin an exact version. New versions are published as immutable GitHub releases wi
 | observability\_project\_id | ID of the Observability project, e.g. the `observability_project_id` output of cf-organization. | `string` | n/a | yes |
 | organization\_id | ID of the organisation, whose logs are routed to the Observability project. | `string` | n/a | yes |
 | region | Region of the regional resources, e.g. the centralised logging bucket. | `string` | `"europe-west4"` | no |
+| scc\_notifications | Email notifications of the organisation's Security Command Centre findings to the common environment's SREs group ([`modules/scc-notifications`](modules/scc-notifications)); not set up when null, e.g. when the findings reach a SIEM: `location`, the Security Command Centre location, `eu`, `sa` or `us` with data residency, `global` otherwise; `severities`, those of the notified active and unmuted findings. | ```object({ location = optional(string, "eu") severities = optional(list(string), ["CRITICAL", "HIGH"]) })``` | `{}` | no |
 | security\_alerts | Alerts on security-relevant audit log entries of the whole organisation, by a key of lowercase letters, digits and underscores, notified to the common environment's SREs group: `display_name`; `filter`, the Logging query of the entries; `severity`, `CRITICAL`, `ERROR` or `WARNING`; `description`, the alert's guidance. The defaults alert on changes of the organisation and folder IAM policies, on the creation or upload of service account keys, and on changes of organisation policies and custom constraints, attempts denied included. | ```map(object({ display_name = string filter = string severity = optional(string, "WARNING") description = optional(string, "") }))``` | ```{ "organization_iam": { "description": "The organisation and folder IAM policies are set authoritatively by the foundations, so a change made otherwise is reverted by their next deployment.", "display_name": "organisation or folder IAM policy changed", "filter": "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND protoPayload.serviceName = \"cloudresourcemanager.googleapis.com\" AND protoPayload.methodName = \"SetIamPolicy\" AND resource.type = (\"organization\" OR \"folder\")" }, "organization_policies": { "description": "The organisation policies are part of the foundations' security baseline; an unexpected change, or an exception, weakens it.", "display_name": "organisation policy changed", "filter": "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND ((protoPayload.serviceName = \"orgpolicy.googleapis.com\" AND protoPayload.methodName = (\"google.cloud.orgpolicy.v2.OrgPolicy.CreatePolicy\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.UpdatePolicy\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.DeletePolicy\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.CreateCustomConstraint\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.UpdateCustomConstraint\" OR \"google.cloud.orgpolicy.v2.OrgPolicy.DeleteCustomConstraint\")) OR (protoPayload.serviceName = \"cloudresourcemanager.googleapis.com\" AND protoPayload.methodName = (\"SetOrgPolicy\" OR \"ClearOrgPolicy\")))" }, "service_account_keys": { "description": "Service account keys are long-lived credentials, whose creation is denied by the organisation policies outside the legacy folder.", "display_name": "service account key created", "filter": "LOG_ID(\"cloudaudit.googleapis.com/activity\") AND protoPayload.serviceName = \"iam.googleapis.com\" AND protoPayload.methodName = (\"google.iam.admin.v1.CreateServiceAccountKey\" OR \"google.iam.admin.v1.UploadServiceAccountKey\")" } }``` | no |
 | sres\_group\_suffix | Suffix of the common environment's SREs group (`gcp-<common short name>-<suffix>`), notified of the alerts. | `string` | `"sres"` | no |
+| tf\_bootstrap\_email | Email of the `tf-bootstrap` service account applying the module, e.g. the `tf_bootstrap_email` output of cf-bootstrap, granted the Service Account User role on the service accounts the module attaches to resources. | `string` | n/a | yes |
 | viewers\_group\_suffix | Suffix of the common environment's viewers group (`gcp-<common short name>-<suffix>`), which can read all the logs of the centralised logging bucket. | `string` | `"viewers"` | no |
 | vpc\_service\_controls | The VPC Service Controls perimeter around the Observability project, to which the ingress rule of the organisation-level log sink is added; not added when null: `perimeter_name`, the perimeter's resource name, e.g. the `perimeter_name` output of cf-organization's vpc-service-controls submodule; `mode`, the submodule's mode: the rule is added to the dry-run configuration, and to the enforced one too when `enforced`. | ```object({ perimeter_name = string mode = optional(string, "dry_run") })``` | `null` | no |
 
@@ -53,6 +57,7 @@ Pin an exact version. New versions are published as immutable GitHub releases wi
 | log\_bucket | ID of the centralised logging bucket (`projects/<project>/locations/<region>/buckets/<bucket>`). |
 | log\_linked\_dataset | ID of the BigQuery dataset linked to the centralised logging bucket. |
 | organization\_sink\_writer\_identity | Writer identity of the organisation-level log sink, which writes the logs into the Observability project. |
+| scc\_notifications\_topic | ID of the topic the Security Command Centre findings are published to, e.g. for a further subscription; null when the notifications are not set up. |
 | sres\_notification\_channel | ID of the notification channel of the common environment's SREs group (`projects/<project>/notificationChannels/<id>`). |
 <!-- markdownlint-restore -->
 <!-- END_TF_DOCS -->

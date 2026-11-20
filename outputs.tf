@@ -17,3 +17,8 @@ output "organization_sink_writer_identity" {
   description = "Writer identity of the organisation-level log sink, which writes the logs into the Observability project."
   value       = google_logging_organization_sink.observability.writer_identity
 }
+
+output "scc_notifications_topic" {
+  description = "ID of the topic the Security Command Centre findings are published to, e.g. for a further subscription; null when the notifications are not set up."
+  value       = one(module.scc_notifications[*].topic)
+}

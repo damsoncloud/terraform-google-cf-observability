@@ -11,6 +11,26 @@ mock_provider "google" {
     }
   }
 
+  mock_resource "google_scc_v2_organization_notification_config" {
+    defaults = {
+      service_account = "service-org-123456789012@gcp-sa-scc-notification.iam.gserviceaccount.com"
+    }
+  }
+
+  mock_resource "google_pubsub_topic" {
+    defaults = {
+      id = "projects/cmn-observability-c3d4/topics/cmn-cf-observability-scc-findings"
+    }
+  }
+
+  mock_resource "google_service_account" {
+    defaults = {
+      email  = "scc-notifications@cmn-observability-c3d4.iam.gserviceaccount.com"
+      member = "serviceAccount:scc-notifications@cmn-observability-c3d4.iam.gserviceaccount.com"
+      name   = "projects/cmn-observability-c3d4/serviceAccounts/scc-notifications@cmn-observability-c3d4.iam.gserviceaccount.com"
+    }
+  }
+
   mock_data "google_project" {
     defaults = {
       number = "333333333333"
@@ -37,6 +57,7 @@ variables {
     legacy        = { id = "folders/100000000004" }
   }
   observability_project_id = "cmn-observability-c3d4"
+  tf_bootstrap_email       = "tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
 }
 
 run "organization_sink" {
@@ -178,8 +199,8 @@ run "no_perimeter" {
 
   assert {
     condition = (
-      length(google_access_context_manager_service_perimeter_ingress_policy.organization_sink) == 0 &&
-      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink) == 0
+      length(google_access_context_manager_service_perimeter_ingress_policy.rules) == 0 &&
+      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules) == 0
     )
     error_message = "No ingress rule must be added without a perimeter."
   }
@@ -194,14 +215,16 @@ run "perimeter_dry_run" {
 
   assert {
     condition = (
-      length(google_access_context_manager_service_perimeter_ingress_policy.organization_sink) == 0 &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].perimeter == "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production" &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_from[0].sources[0].access_level == "*" &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_to[0].resources == tolist(["projects/333333333333"]) &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink[0].ingress_to[0].operations[0].service_name == "logging.googleapis.com"
+      length(google_access_context_manager_service_perimeter_ingress_policy.rules) == 0 &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].perimeter == "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production" &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_from[0].sources[0].access_level == "*" &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_to[0].resources == tolist(["projects/333333333333"]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_to[0].operations[0].service_name == "logging.googleapis.com" &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Security Command Centre finding notifications"].ingress_from[0].identities == tolist(["serviceAccount:service-org-123456789012@gcp-sa-scc-notification.iam.gserviceaccount.com"]) &&
+      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Security Command Centre finding notifications"].ingress_to[0].operations[0].method_selectors[0].method == "google.pubsub.v1.Publisher.Publish"
     )
-    error_message = "In dry-run mode, the organisation-level sink's ingress rule into the Observability project must be added to the dry-run configuration only."
+    error_message = "In dry-run mode, the ingress rules of the organisation-level sink and the SCC notifications into the Observability project must be added to the dry-run configuration only."
   }
 }
 
@@ -215,9 +238,10 @@ run "perimeter_enforced" {
 
   assert {
     condition = (
-      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.organization_sink) == 1 &&
-      google_access_context_manager_service_perimeter_ingress_policy.organization_sink[0].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
-      google_access_context_manager_service_perimeter_ingress_policy.organization_sink[0].ingress_to[0].resources == tolist(["projects/333333333333"])
+      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules) == 2 &&
+      length(google_access_context_manager_service_perimeter_ingress_policy.rules) == 2 &&
+      google_access_context_manager_service_perimeter_ingress_policy.rules["Centralised logging organisation sink"].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
+      google_access_context_manager_service_perimeter_ingress_policy.rules["Centralised logging organisation sink"].ingress_to[0].resources == tolist(["projects/333333333333"])
     )
     error_message = "In enforced mode, the ingress rule must be added to both configurations."
   }
@@ -303,6 +327,122 @@ run "invalid_security_alert" {
   }
 
   expect_failures = [var.security_alerts, var.security_alerts]
+}
+
+run "scc_notifications" {
+  assert {
+    condition = (
+      module.scc_notifications[0].topic == output.scc_notifications_topic &&
+      output.scc_notifications_topic == "projects/cmn-observability-c3d4/topics/cmn-cf-observability-scc-findings"
+    )
+    error_message = "The SCC notifications must be set up by default."
+  }
+}
+
+run "scc_notifications_submodule" {
+  command = plan
+
+  module {
+    source = "./modules/scc-notifications"
+  }
+
+  variables {
+    project_id            = "cmn-observability-c3d4"
+    region                = "europe-west4"
+    name                  = "cmn-cf-observability-scc-findings"
+    scc_location          = "eu"
+    severities            = ["CRITICAL", "HIGH"]
+    deployer_email        = "tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
+    alert_display_name    = "[example.com] cmn-cf-observability - Security Command Centre finding"
+    notification_channels = ["projects/cmn-observability-c3d4/notificationChannels/1234567890"]
+  }
+
+  assert {
+    condition = (
+      google_scc_v2_organization_notification_config.scc_notifications.organization == "123456789012" &&
+      google_scc_v2_organization_notification_config.scc_notifications.location == "eu" &&
+      google_scc_v2_organization_notification_config.scc_notifications.streaming_config[0].filter == "state=\"ACTIVE\" AND NOT mute=\"MUTED\" AND NOT launch_state=\"LAUNCH_STATE_DEPRECATED\" AND (severity=\"CRITICAL\" OR severity=\"HIGH\")"
+    )
+    error_message = "The organisation's active, unmuted critical and high findings in the eu location must be published."
+  }
+
+  assert {
+    condition     = strcontains(google_workflows_workflow.scc_notifications.source_contents, "https://console.eu.cloud.google.com/security/command-center/findingsv2;name=")
+    error_message = "The findings in the eu location must be linked in the eu jurisdictional console."
+  }
+
+  assert {
+    condition = (
+      google_service_account_iam_member.deployer.role == "roles/iam.serviceAccountUser" &&
+      google_service_account_iam_member.deployer.member == "serviceAccount:tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
+    )
+    error_message = "The deployer must be able to attach the workflow's service account."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.scc_notifications.notification_channels == tolist(["projects/cmn-observability-c3d4/notificationChannels/1234567890"]) &&
+      google_monitoring_alert_policy.scc_notifications.alert_strategy[0].notification_rate_limit[0].period == "300s" &&
+      strcontains(google_monitoring_alert_policy.scc_notifications.conditions[0].condition_matched_log[0].filter, "resource.labels.workflow_id=\"cmn-cf-observability-scc-findings\"")
+    )
+    error_message = "The alerting policy must email the workflow's findings."
+  }
+}
+
+run "scc_notifications_global" {
+  command = plan
+
+  module {
+    source = "./modules/scc-notifications"
+  }
+
+  variables {
+    project_id            = "cmn-observability-c3d4"
+    region                = "europe-west4"
+    name                  = "cmn-cf-observability-scc-findings"
+    scc_location          = "global"
+    severities            = ["CRITICAL"]
+    deployer_email        = "tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
+    alert_display_name    = "SCC"
+    notification_channels = []
+  }
+
+  assert {
+    condition = (
+      strcontains(google_workflows_workflow.scc_notifications.source_contents, "https://console.cloud.google.com/security/command-center/findingsv2;name=") &&
+      google_scc_v2_organization_notification_config.scc_notifications.streaming_config[0].filter == "state=\"ACTIVE\" AND NOT mute=\"MUTED\" AND NOT launch_state=\"LAUNCH_STATE_DEPRECATED\" AND (severity=\"CRITICAL\")"
+    )
+    error_message = "The findings in the global location must be linked in the global console."
+  }
+}
+
+run "no_scc_notifications" {
+  command = plan
+
+  variables {
+    scc_notifications = null
+    vpc_service_controls = {
+      perimeter_name = "accessPolicies/555555555555/servicePerimeters/cloud_foundations_production"
+    }
+  }
+
+  assert {
+    condition = (
+      length(module.scc_notifications) == 0 &&
+      toset(keys(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules)) == toset(["Centralised logging organisation sink"])
+    )
+    error_message = "The SCC notifications and their ingress rule must not be set up when disabled."
+  }
+}
+
+run "invalid_scc_notifications" {
+  command = plan
+
+  variables {
+    scc_notifications = { location = "europe", severities = ["URGENT"] }
+  }
+
+  expect_failures = [var.scc_notifications, var.scc_notifications]
 }
 
 run "no_common_folder" {

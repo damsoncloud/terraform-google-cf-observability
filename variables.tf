@@ -37,6 +37,11 @@ variable "observability_project_id" {
   type        = string
 }
 
+variable "tf_bootstrap_email" {
+  description = "Email of the `tf-bootstrap` service account applying the module, e.g. the `tf_bootstrap_email` output of cf-bootstrap, granted the Service Account User role on the service accounts the module attaches to resources."
+  type        = string
+}
+
 variable "region" {
   description = "Region of the regional resources, e.g. the centralised logging bucket."
   type        = string
@@ -139,5 +144,24 @@ variable "security_alerts" {
   validation {
     condition     = alltrue([for alert in values(var.security_alerts) : contains(["CRITICAL", "ERROR", "WARNING"], alert.severity)])
     error_message = "The security_alerts severities must be CRITICAL, ERROR or WARNING."
+  }
+}
+
+variable "scc_notifications" {
+  description = "Email notifications of the organisation's Security Command Centre findings to the common environment's SREs group ([`modules/scc-notifications`](modules/scc-notifications)); not set up when null, e.g. when the findings reach a SIEM: `location`, the Security Command Centre location, `eu`, `sa` or `us` with data residency, `global` otherwise; `severities`, those of the notified active and unmuted findings."
+  type = object({
+    location   = optional(string, "eu")
+    severities = optional(list(string), ["CRITICAL", "HIGH"])
+  })
+  default = {}
+
+  validation {
+    condition     = var.scc_notifications == null || contains(["eu", "global", "sa", "us"], try(var.scc_notifications.location, ""))
+    error_message = "The scc_notifications location must be eu, sa, us or global."
+  }
+
+  validation {
+    condition     = var.scc_notifications == null || try(length(var.scc_notifications.severities) > 0 && length(setsubtract(var.scc_notifications.severities, ["CRITICAL", "HIGH", "MEDIUM", "LOW"])) == 0, false)
+    error_message = "The scc_notifications severities must be CRITICAL, HIGH, MEDIUM or LOW, at least one."
   }
 }
