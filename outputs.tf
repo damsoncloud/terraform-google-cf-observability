@@ -22,3 +22,8 @@ output "scc_notifications_topic" {
   description = "ID of the topic the Security Command Centre findings are published to, e.g. for a further subscription; null when the notifications are not set up."
   value       = one(module.scc_notifications[*].topic)
 }
+
+output "billing_disabler_topic" {
+  description = "ID of the billing disabler's topic (`projects/<project>/topics/<name>`), to which cf-gcp-project connects the budgets of the projects enabling the billing disabler."
+  value       = google_pubsub_topic.billing_disabler.id
+}

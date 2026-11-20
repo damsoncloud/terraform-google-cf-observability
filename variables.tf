@@ -42,6 +42,37 @@ variable "tf_bootstrap_email" {
   type        = string
 }
 
+variable "billing_disabler_email" {
+  description = "Email of the billing disabler's service account, running its Cloud Run service, e.g. the `billing_disabler_email` output of cf-organization, which grants it its roles and `tf-bootstrap` the Service Account User role on it."
+  type        = string
+}
+
+variable "billing_notification_channel" {
+  description = "ID of the billing administrators' notification channel (`projects/<project>/notificationChannels/<id>`), e.g. the `billing_notification_channel` output of cf-organization, notified of the projects whose billing is disabled."
+  type        = string
+}
+
+variable "billing_disabler_image_path" {
+  description = "Container image of the billing disabler, without the tag."
+  type        = string
+  default     = "ghcr.io/damsoncloud/gcp.billing-disabler"
+  nullable    = false
+}
+
+variable "billing_disabler_image_tag" {
+  description = "Tag of the billing disabler's container image, pinned to a reviewed version."
+  type        = string
+  default     = "1.1.6"
+  nullable    = false
+}
+
+variable "billing_disabler_dry_run" {
+  description = "Whether the billing disabler only logs the projects whose billing it would disable."
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
 variable "region" {
   description = "Region of the regional resources, e.g. the centralised logging bucket."
   type        = string

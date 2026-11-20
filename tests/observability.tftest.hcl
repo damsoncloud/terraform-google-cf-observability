@@ -56,8 +56,10 @@ variables {
     common        = { id = "folders/111111111111", short_name = "cmn", common = true }
     legacy        = { id = "folders/100000000004" }
   }
-  observability_project_id = "cmn-observability-c3d4"
-  tf_bootstrap_email       = "tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
+  observability_project_id     = "cmn-observability-c3d4"
+  tf_bootstrap_email           = "tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
+  billing_disabler_email       = "billing-disabler@cmn-observability-c3d4.iam.gserviceaccount.com"
+  billing_notification_channel = "projects/cmn-observability-c3d4/notificationChannels/2222222222"
 }
 
 run "organization_sink" {
@@ -443,6 +445,66 @@ run "invalid_scc_notifications" {
   }
 
   expect_failures = [var.scc_notifications, var.scc_notifications]
+}
+
+run "billing_disabler" {
+  assert {
+    condition = (
+      google_cloud_run_v2_service.billing_disabler.name == "cmn-cf-billing-disabler" &&
+      google_cloud_run_v2_service.billing_disabler.location == "europe-west4" &&
+      google_cloud_run_v2_service.billing_disabler.ingress == "INGRESS_TRAFFIC_INTERNAL_ONLY" &&
+      google_cloud_run_v2_service.billing_disabler.template[0].service_account == "billing-disabler@cmn-observability-c3d4.iam.gserviceaccount.com" &&
+      google_cloud_run_v2_service.billing_disabler.template[0].containers[0].image == "ghcr.io/damsoncloud/gcp.billing-disabler:1.1.6" &&
+      one([for env in google_cloud_run_v2_service.billing_disabler.template[0].containers[0].env : env.value if env.name == "DRY_RUN"]) == "false"
+    )
+    error_message = "The billing disabler must run internally only, as cf-organization's service account, disabling billing by default."
+  }
+
+  assert {
+    condition = (
+      google_pubsub_subscription.billing_disabler.topic == google_pubsub_topic.billing_disabler.id &&
+      google_pubsub_subscription.billing_disabler.push_config[0].oidc_token[0].service_account_email == google_service_account.billing_disabler_invoker.email &&
+      google_cloud_run_v2_service_iam_member.billing_disabler_invoker.role == "roles/run.invoker" &&
+      google_cloud_run_v2_service_iam_member.billing_disabler_invoker.member == google_service_account.billing_disabler_invoker.member &&
+      output.billing_disabler_topic == google_pubsub_topic.billing_disabler.id
+    )
+    error_message = "The budget notifications must be pushed to the billing disabler as its invoker."
+  }
+
+  assert {
+    condition = (
+      google_service_account_iam_member.billing_disabler_invoker_deployer.role == "roles/iam.serviceAccountUser" &&
+      google_service_account_iam_member.billing_disabler_invoker_deployer.member == "serviceAccount:tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
+    )
+    error_message = "tf-bootstrap must be able to attach the invoker to the push subscription."
+  }
+
+  assert {
+    condition = (
+      toset(keys(google_monitoring_alert_policy.billing_disabler)) == toset(["billing_disabled", "billing_disabling_simulated", "errors", "unhandled_errors"]) &&
+      google_monitoring_alert_policy.billing_disabler["billing_disabled"].notification_channels == tolist([output.sres_notification_channel, "projects/cmn-observability-c3d4/notificationChannels/2222222222"]) &&
+      google_monitoring_alert_policy.billing_disabler["errors"].notification_channels == tolist([output.sres_notification_channel]) &&
+      strcontains(google_monitoring_alert_policy.billing_disabler["billing_disabled"].conditions[0].condition_matched_log[0].filter, "resource.labels.service_name=\"cmn-cf-billing-disabler\"")
+    )
+    error_message = "The billing disabler's events must alert the SREs, and the billing administrators of disabled and simulated ones."
+  }
+}
+
+run "billing_disabler_dry_run" {
+  command = plan
+
+  variables {
+    billing_disabler_dry_run   = true
+    billing_disabler_image_tag = "1.1.5"
+  }
+
+  assert {
+    condition = (
+      one([for env in google_cloud_run_v2_service.billing_disabler.template[0].containers[0].env : env.value if env.name == "DRY_RUN"]) == "true" &&
+      google_cloud_run_v2_service.billing_disabler.template[0].containers[0].image == "ghcr.io/damsoncloud/gcp.billing-disabler:1.1.5"
+    )
+    error_message = "The billing disabler's mode and image must follow the inputs."
+  }
 }
 
 run "no_common_folder" {

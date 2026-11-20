@@ -10,6 +10,8 @@ resource "google_project_service" "observability" {
     # keep-sorted start
     "bigquery.googleapis.com",
     "logging.googleapis.com",
+    "pubsub.googleapis.com",
+    "run.googleapis.com",
     # keep-sorted end
   ])
 
