@@ -12,14 +12,6 @@ locals {
         method     = "*"
       }
     },
-    var.scc_notifications == null ? {} : {
-      "Security Command Centre finding notifications" = {
-        identities = [module.scc_notifications[0].service_agent]
-        resources  = ["projects/${data.google_project.observability.number}"]
-        service    = "pubsub.googleapis.com"
-        method     = "google.pubsub.v1.Publisher.Publish"
-      }
-    },
     { for title in local.azure_integration_rule_titles : title => module.azure_integration[0].perimeter_ingress_rules[title] },
     var.drive_inventory_export == null ? {} : {
       "Google Drive inventory export" = {

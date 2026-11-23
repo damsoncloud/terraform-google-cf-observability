@@ -17,12 +17,6 @@ mock_provider "google" {
     }
   }
 
-  mock_resource "google_scc_v2_organization_notification_config" {
-    defaults = {
-      service_account = "service-org-123456789012@gcp-sa-scc-notification.iam.gserviceaccount.com"
-    }
-  }
-
   mock_resource "google_pubsub_topic" {
     defaults = {
       id = "projects/cmn-observability-c3d4/topics/cmn-cf-observability-scc-findings"
@@ -229,10 +223,9 @@ run "perimeter_dry_run" {
       google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_from[0].sources[0].access_level == "*" &&
       google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_to[0].resources == tolist(["projects/333333333333"]) &&
       google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Centralised logging organisation sink"].ingress_to[0].operations[0].service_name == "logging.googleapis.com" &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Security Command Centre finding notifications"].ingress_from[0].identities == tolist(["serviceAccount:service-org-123456789012@gcp-sa-scc-notification.iam.gserviceaccount.com"]) &&
-      google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules["Security Command Centre finding notifications"].ingress_to[0].operations[0].method_selectors[0].method == "google.pubsub.v1.Publisher.Publish"
+      toset(keys(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules)) == toset(["Centralised logging organisation sink"])
     )
-    error_message = "In dry-run mode, the ingress rules of the organisation-level sink and the SCC notifications into the Observability project must be added to the dry-run configuration only."
+    error_message = "In dry-run mode, only the ingress rule of the organisation-level sink into the Observability project must be added, to the dry-run configuration only; the SCC notifications need none."
   }
 }
 
@@ -246,8 +239,8 @@ run "perimeter_enforced" {
 
   assert {
     condition = (
-      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules) == 2 &&
-      length(google_access_context_manager_service_perimeter_ingress_policy.rules) == 2 &&
+      length(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules) == 1 &&
+      length(google_access_context_manager_service_perimeter_ingress_policy.rules) == 1 &&
       google_access_context_manager_service_perimeter_ingress_policy.rules["Centralised logging organisation sink"].ingress_from[0].identities == tolist([output.organization_sink_writer_identity]) &&
       google_access_context_manager_service_perimeter_ingress_policy.rules["Centralised logging organisation sink"].ingress_to[0].resources == tolist(["projects/333333333333"])
     )
@@ -538,7 +531,6 @@ run "azure_integration" {
       output.azure_workload_identity_pool == module.azure_integration[0].workload_identity_pool &&
       toset(keys(google_access_context_manager_service_perimeter_dry_run_ingress_policy.rules)) == toset([
         "Centralised logging organisation sink",
-        "Security Command Centre finding notifications",
         "Microsoft Sentinel",
         "Microsoft Defender for Cloud",
       ])

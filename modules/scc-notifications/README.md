@@ -30,7 +30,6 @@ The alerting policy notifies at most once in 5 minutes: when several findings ar
 
 | Name | Description |
 | ---- | ----------- |
-| service\_agent | Service agent publishing the findings to the topic, e.g. for a VPC Service Controls ingress rule. |
 | topic | ID of the topic the findings are published to (`projects/<project>/topics/<name>`). |
 <!-- markdownlint-restore -->
 <!-- END_TF_DOCS -->
