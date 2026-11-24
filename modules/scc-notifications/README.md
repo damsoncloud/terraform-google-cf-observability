@@ -18,6 +18,7 @@ The alerting policy notifies at most once in 5 minutes: when several findings ar
 | ---- | ----------- | ---- | ------- | :------: |
 | alert\_display\_name | Display name of the alerting policy. | `string` | n/a | yes |
 | deployer\_email | Email of the service account applying the module, e.g. `tf-bootstrap`, granted the Service Account User role on the workflow's service account. | `string` | n/a | yes |
+| labels | Labels of the alerting policy. | `map(string)` | `{}` | no |
 | name | Name of the notification config, the topic, the workflow and its trigger. | `string` | n/a | yes |
 | notification\_channels | Notification channels of the alerting policy (`projects/<project>/notificationChannels/<id>`). | `list(string)` | n/a | yes |
 | organization\_id | ID of the organisation, whose findings are notified. | `string` | n/a | yes |

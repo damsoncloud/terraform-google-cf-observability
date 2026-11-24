@@ -11,6 +11,7 @@ module "scc_notifications" {
   deployer_email        = var.tf_bootstrap_email
   alert_display_name    = "[${var.domain}] ${local.name_prefix} - Security Command Centre finding"
   notification_channels = [google_monitoring_notification_channel.sres.id]
+  labels                = var.labels
 }
 
 module "azure_integration" {

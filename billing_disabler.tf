@@ -187,6 +187,7 @@ resource "google_monitoring_alert_policy" "billing_disabler" {
 
   project      = var.observability_project_id
   display_name = "[${var.domain}] ${local.billing_disabler_name} - ${each.value.title}"
+  user_labels  = var.labels
   severity     = each.value.severity
   combiner     = "OR"
 
