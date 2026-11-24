@@ -34,7 +34,11 @@ variable "sentinel" {
 }
 
 variable "defender_for_cloud" {
-  description = "The organisation-level part of the Microsoft Defender for Cloud integration, e.g. the `defender_for_cloud` output of cf-organization; not set up when null: `service_accounts`, their emails by name; `log_collection_role`, the custom role consuming the audit log subscription."
+  description = <<-EOT
+  The organisation-level part of the Microsoft Defender for Cloud integration, e.g. the `defender_for_cloud` output of cf-organization; not set up when null:
+    `service_accounts`, their emails by name;
+    `log_collection_role`, the custom role consuming the audit log subscription.
+  EOT
   type = object({
     service_accounts    = map(string)
     log_collection_role = string

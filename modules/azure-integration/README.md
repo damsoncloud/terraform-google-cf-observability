@@ -20,7 +20,7 @@ The connectors are created in Azure after the installation, with the Workload Id
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| defender\_for\_cloud | The organisation-level part of the Microsoft Defender for Cloud integration, e.g. the `defender_for_cloud` output of cf-organization; not set up when null: `service_accounts`, their emails by name; `log_collection_role`, the custom role consuming the audit log subscription. | ```object({ service_accounts = map(string) log_collection_role = string })``` | n/a | yes |
+| defender\_for\_cloud | The organisation-level part of the Microsoft Defender for Cloud integration, e.g. the `defender_for_cloud` output of cf-organization; not set up when null:   `service_accounts`, their emails by name;   `log_collection_role`, the custom role consuming the audit log subscription. | ```object({ service_accounts = map(string) log_collection_role = string })``` | n/a | yes |
 | organization\_id | ID of the organisation, whose Security Command Centre findings are published for Microsoft Sentinel. | `string` | n/a | yes |
 | project\_id | ID of the project of the integration, e.g. the Observability project. | `string` | n/a | yes |
 | project\_number | Number of the project, for the VPC Service Controls ingress rules. | `string` | n/a | yes |

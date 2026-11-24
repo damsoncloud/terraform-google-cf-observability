@@ -34,6 +34,9 @@ output "drive_inventory_dataset" {
 }
 
 output "azure_workload_identity_pool" {
-  description = "Resource name of the Workload Identity pool of the Azure tenant, for the Microsoft Sentinel and Defender for Cloud connectors created in Azure; null when the Azure integration is not set up."
+  description = <<-EOT
+  Resource name of the Workload Identity pool of the Azure tenant, for the Microsoft Sentinel and Defender for Cloud connectors created in Azure;
+  null when the Azure integration is not set up.
+  EOT
   value       = one(module.azure_integration[*].workload_identity_pool)
 }

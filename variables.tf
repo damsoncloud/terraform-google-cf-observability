@@ -9,7 +9,10 @@ variable "organization_id" {
 }
 
 variable "domain" {
-  description = "Domain of the organisation's groups, e.g. `example.com` for `gcp-cmn-sres@example.com`. It prefixes the alerting policies' names, to tell apart the alerts of several organisations."
+  description = <<-EOT
+  Domain of the organisation's groups, e.g. `example.com` for `gcp-cmn-sres@example.com`.
+  It prefixes the alerting policies' names, to tell apart the alerts of several organisations.
+  EOT
   type        = string
 
   validation {
@@ -19,7 +22,13 @@ variable "domain" {
 }
 
 variable "folders" {
-  description = "The folders by folder name, e.g. the `folders` output of cf-hierarchy: `id`, the resource name (`folders/<id>`); `short_name`, the environment's short name, null for folders other than environments; `common`, whether it is the common environment. The common environment's short name prefixes the resources' names (`<common short name>-cf-observability`) and names its groups."
+  description = <<-EOT
+  The folders by folder name, e.g. the `folders` output of cf-hierarchy:
+    `id`, the resource name (`folders/<id>`);
+    `short_name`, the environment's short name, null for folders other than environments;
+    `common`, whether it is the common environment.
+  The common environment's short name prefixes the resources' names (`<common short name>-cf-observability`) and names its groups.
+  EOT
   type = map(object({
     id         = string
     short_name = optional(string)
@@ -38,17 +47,26 @@ variable "observability_project_id" {
 }
 
 variable "tf_bootstrap_email" {
-  description = "Email of the `tf-bootstrap` service account applying the module, e.g. the `tf_bootstrap_email` output of cf-bootstrap, granted the Service Account User role on the service accounts the module attaches to resources."
+  description = <<-EOT
+  Email of the `tf-bootstrap` service account applying the module, e.g. the `tf_bootstrap_email` output of cf-bootstrap,
+  granted the Service Account User role on the service accounts the module attaches to resources.
+  EOT
   type        = string
 }
 
 variable "billing_disabler_email" {
-  description = "Email of the billing disabler's service account, running its Cloud Run service, e.g. the `billing_disabler_email` output of cf-organization, which grants it its roles and `tf-bootstrap` the Service Account User role on it."
+  description = <<-EOT
+  Email of the billing disabler's service account, running its Cloud Run service, e.g. the `billing_disabler_email` output of cf-organization,
+  which grants it its roles and `tf-bootstrap` the Service Account User role on it.
+  EOT
   type        = string
 }
 
 variable "billing_notification_channel" {
-  description = "ID of the billing administrators' notification channel (`projects/<project>/notificationChannels/<id>`), e.g. the `billing_notification_channel` output of cf-organization, notified of the projects whose billing is disabled."
+  description = <<-EOT
+  ID of the billing administrators' notification channel (`projects/<project>/notificationChannels/<id>`), e.g. the `billing_notification_channel` output of cf-organization,
+  notified of the projects whose billing is disabled.
+  EOT
   type        = string
 }
 
@@ -93,7 +111,11 @@ variable "log_retention_days" {
 }
 
 variable "log_exclusions" {
-  description = "Exclusions of the organisation-level log sink by name: `filter`, the logs not routed to the Observability project; `description`."
+  description = <<-EOT
+  Exclusions of the organisation-level log sink by name:
+    `filter`, the logs not routed to the Observability project;
+    `description`.
+  EOT
   type = map(object({
     filter      = string
     description = optional(string)
@@ -122,7 +144,11 @@ variable "viewers_group_suffix" {
 }
 
 variable "vpc_service_controls" {
-  description = "The VPC Service Controls perimeter around the Observability project, to which the ingress rule of the organisation-level log sink is added; not added when null: `perimeter_name`, the perimeter's resource name, e.g. the `perimeter_name` output of cf-organization's vpc-service-controls submodule; `mode`, the submodule's mode: the rule is added to the dry-run configuration, and to the enforced one too when `enforced`."
+  description = <<-EOT
+  The VPC Service Controls perimeter around the Observability project, to which the ingress rule of the organisation-level log sink is added; not added when null:
+    `perimeter_name`, the perimeter's resource name, e.g. the `perimeter_name` output of cf-organization's vpc-service-controls submodule;
+    `mode`, the submodule's mode: the rule is added to the dry-run configuration, and to the enforced one too when `enforced`.
+  EOT
   type = object({
     perimeter_name = string
     mode           = optional(string, "dry_run")
@@ -141,7 +167,16 @@ variable "vpc_service_controls" {
 }
 
 variable "security_alerts" {
-  description = "Alerts on security-relevant audit log entries of the whole organisation, by a key of lowercase letters, digits and underscores, notified to the common environment's SREs group: `display_name`; `filter`, the Logging query of the entries; `severity`, `CRITICAL`, `ERROR` or `WARNING`; `description`, the alert's guidance. The defaults alert on changes of the organisation and folder IAM policies, on the creation or upload of service account keys, and on changes of organisation policies and custom constraints, attempts denied included."
+  description = <<-EOT
+  Alerts on security-relevant audit log entries of the whole organisation, by a key of lowercase letters, digits and underscores,
+  notified to the common environment's SREs group:
+    `display_name`;
+    `filter`, the Logging query of the entries;
+    `severity`, `CRITICAL`, `ERROR` or `WARNING`;
+    `description`, the alert's guidance.
+  The defaults alert on changes of the organisation and folder IAM policies, on the creation or upload of service account keys,
+  and on changes of organisation policies and custom constraints, attempts denied included.
+  EOT
   type = map(object({
     display_name = string
     filter       = string
@@ -179,7 +214,10 @@ variable "security_alerts" {
 }
 
 variable "scc_location" {
-  description = "Security Command Centre location of the organisation's findings, of the email notifications and of the Microsoft Sentinel integration: `eu`, `sa` or `us` with data residency, `global` otherwise."
+  description = <<-EOT
+  Security Command Centre location of the organisation's findings, of the email notifications and of the Microsoft Sentinel integration:
+  `eu`, `sa` or `us` with data residency, `global` otherwise.
+  EOT
   type        = string
   default     = "eu"
   nullable    = false
@@ -191,7 +229,11 @@ variable "scc_location" {
 }
 
 variable "scc_notifications" {
-  description = "Email notifications of the organisation's Security Command Centre findings to the common environment's SREs group ([`modules/scc-notifications`](modules/scc-notifications)); not set up when null, e.g. when the findings reach a SIEM: `severities`, those of the notified active and unmuted findings."
+  description = <<-EOT
+  Email notifications of the organisation's Security Command Centre findings to the common environment's SREs group
+  ([`modules/scc-notifications`](modules/scc-notifications)); not set up when null, e.g. when the findings reach a SIEM:
+    `severities`, those of the notified active and unmuted findings.
+  EOT
   type = object({
     severities = optional(list(string), ["CRITICAL", "HIGH"])
   })
@@ -204,7 +246,13 @@ variable "scc_notifications" {
 }
 
 variable "azure_integration" {
-  description = "Microsoft Sentinel and Defender for Cloud integration through Workload Identity Federation from the customer's Microsoft Entra ID tenant ([`modules/azure-integration`](modules/azure-integration)); not set up when null: `tenant_id`, the tenant's ID; `sentinel`, whether Microsoft Sentinel receives the Security Command Centre findings; `defender_for_cloud`, the Defender for Cloud integration's organisation-level part, the `defender_for_cloud` output of cf-organization, not set up when null."
+  description = <<-EOT
+  Microsoft Sentinel and Defender for Cloud integration through Workload Identity Federation from the customer's Microsoft Entra ID tenant
+  ([`modules/azure-integration`](modules/azure-integration)); not set up when null:
+    `tenant_id`, the tenant's ID;
+    `sentinel`, whether Microsoft Sentinel receives the Security Command Centre findings;
+    `defender_for_cloud`, the Defender for Cloud integration's organisation-level part, the `defender_for_cloud` output of cf-organization, not set up when null.
+  EOT
   type = object({
     tenant_id = string
     sentinel  = optional(bool, false)
@@ -222,7 +270,11 @@ variable "azure_integration" {
 }
 
 variable "drive_inventory_export" {
-  description = "Google Drive inventory export from Google Workspace into a BigQuery dataset of the Observability project ([`modules/drive-inventory-export`](modules/drive-inventory-export)); not set up when null: `service_account`, the email of the Google Workspace service account exporting the inventory, which the org-policies submodule of cf-organization must allow."
+  description = <<-EOT
+  Google Drive inventory export from Google Workspace into a BigQuery dataset of the Observability project
+  ([`modules/drive-inventory-export`](modules/drive-inventory-export)); not set up when null:
+    `service_account`, the email of the Google Workspace service account exporting the inventory, which the org-policies submodule of cf-organization must allow.
+  EOT
   type = object({
     service_account = string
   })

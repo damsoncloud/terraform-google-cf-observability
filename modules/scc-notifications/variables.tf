@@ -19,7 +19,10 @@ variable "name" {
 }
 
 variable "scc_location" {
-  description = "Security Command Centre location of the findings: `eu`, `sa` or `us` with data residency, `global` otherwise. The findings are linked in the location's jurisdictional console, e.g. `console.eu.cloud.google.com`."
+  description = <<-EOT
+  Security Command Centre location of the findings: `eu`, `sa` or `us` with data residency, `global` otherwise.
+  The findings are linked in the location's jurisdictional console, e.g. `console.eu.cloud.google.com`.
+  EOT
   type        = string
 }
 
