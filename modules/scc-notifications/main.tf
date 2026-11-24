@@ -72,6 +72,23 @@ resource "google_project_iam_member" "scc_notifications" {
   member  = google_service_account.scc_notifications.member
 }
 
+# Google creates the service agents some time after their APIs are enabled, but the workflow and the trigger need theirs on creation, so they are
+# created explicitly; only the google-beta provider supports it
+resource "google_project_service_identity" "scc_notifications" {
+  provider = google-beta
+  for_each = toset(["eventarc.googleapis.com", "workflows.googleapis.com"])
+
+  project = google_project_service.scc_notifications[each.key].project
+  service = each.key
+}
+
+# Their roles, granted when they are created, are not effective immediately, e.g. the Eventarc agent's on the trigger's Pub/Sub subscription
+resource "time_sleep" "service_agents_propagation" {
+  create_duration = "60s"
+
+  triggers = { for service, identity in google_project_service_identity.scc_notifications : service => identity.member }
+}
+
 resource "google_workflows_workflow" "scc_notifications" {
   project             = google_project_service.scc_notifications["workflows.googleapis.com"].project
   name                = var.name
@@ -101,7 +118,11 @@ resource "google_workflows_workflow" "scc_notifications" {
                 console_url: $${"https://${local.console_host}/security/command-center/findingsv2;name=" + text.url_encode(finding.name) + "?organizationId=${var.organization_id}"}
   EOT
 
-  depends_on = [time_sleep.deployer_iam_propagation, google_project_service.scc_notifications["workflowexecutions.googleapis.com"]]
+  depends_on = [
+    time_sleep.deployer_iam_propagation,
+    google_project_service.scc_notifications["workflowexecutions.googleapis.com"],
+    time_sleep.service_agents_propagation,
+  ]
 }
 
 resource "google_eventarc_trigger" "scc_notifications" {
@@ -125,7 +146,11 @@ resource "google_eventarc_trigger" "scc_notifications" {
     }
   }
 
-  depends_on = [time_sleep.deployer_iam_propagation, google_project_iam_member.scc_notifications]
+  depends_on = [
+    time_sleep.deployer_iam_propagation,
+    google_project_iam_member.scc_notifications,
+    time_sleep.service_agents_propagation,
+  ]
 }
 
 # Log-based alerting policies scan the workflow's entries, which originate in the project and are routed back to it by the organisation-level sink
