@@ -41,6 +41,13 @@ variable "alert_display_name" {
   type        = string
 }
 
+variable "labels" {
+  description = "Labels of the alerting policy."
+  type        = map(string)
+  default     = {}
+  nullable    = false
+}
+
 variable "notification_channels" {
   description = "Notification channels of the alerting policy (`projects/<project>/notificationChannels/<id>`)."
   type        = list(string)

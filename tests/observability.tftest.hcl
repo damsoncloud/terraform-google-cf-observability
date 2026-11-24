@@ -176,6 +176,7 @@ run "custom_settings" {
     log_exclusions       = {}
     sres_group_suffix    = "oncall"
     viewers_group_suffix = "auditors"
+    labels               = { component = "cf", owner = "team_at_example_com" }
   }
 
   assert {
@@ -194,6 +195,25 @@ run "custom_settings" {
     )
     error_message = "The groups must follow the suffix inputs."
   }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.sink_errors.user_labels == tomap({ component = "cf", owner = "team_at_example_com" }) &&
+      alltrue([for policy in google_monitoring_alert_policy.billing_disabler : policy.user_labels == tomap({ component = "cf", owner = "team_at_example_com" })]) &&
+      alltrue([for policy in google_monitoring_alert_policy.security_alerts : policy.user_labels == tomap({ component = "cf", owner = "team_at_example_com" })])
+    )
+    error_message = "The alerting policies must be labelled, as the provider's default labels do not apply to them."
+  }
+}
+
+run "invalid_labels" {
+  command = plan
+
+  variables {
+    labels = { Owner = "team@example.com" }
+  }
+
+  expect_failures = [var.labels]
 }
 
 run "no_perimeter" {
@@ -356,6 +376,7 @@ run "scc_notifications_submodule" {
     deployer_email        = "tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
     alert_display_name    = "[example.com] cmn-cf-observability - Security Command Centre finding"
     notification_channels = ["projects/cmn-observability-c3d4/notificationChannels/1234567890"]
+    labels                = { component = "cf" }
   }
 
   assert {
@@ -387,6 +408,11 @@ run "scc_notifications_submodule" {
       strcontains(google_monitoring_alert_policy.scc_notifications.conditions[0].condition_matched_log[0].filter, "resource.labels.workflow_id=\"cmn-cf-observability-scc-findings\"")
     )
     error_message = "The alerting policy must email the workflow's findings."
+  }
+
+  assert {
+    condition     = google_monitoring_alert_policy.scc_notifications.user_labels == tomap({ component = "cf" })
+    error_message = "The alerting policy must be labelled."
   }
 }
 

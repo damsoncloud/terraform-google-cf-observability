@@ -132,6 +132,7 @@ resource "google_eventarc_trigger" "scc_notifications" {
 resource "google_monitoring_alert_policy" "scc_notifications" {
   project      = var.project_id
   display_name = var.alert_display_name
+  user_labels  = var.labels
   severity     = "CRITICAL"
   combiner     = "OR"
 

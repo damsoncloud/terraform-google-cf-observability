@@ -123,6 +123,7 @@ resource "time_sleep" "metrics_propagation" {
 resource "google_monitoring_alert_policy" "sink_errors" {
   project      = var.observability_project_id
   display_name = "[${var.domain}] ${local.name_prefix} - logging sinks errors"
+  user_labels  = var.labels
   severity     = "WARNING"
   combiner     = "OR"
 

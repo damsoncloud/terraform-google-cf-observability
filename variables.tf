@@ -143,6 +143,23 @@ variable "viewers_group_suffix" {
   nullable    = false
 }
 
+variable "labels" {
+  description = <<-EOT
+  Labels of the alerting policies, following the labelling strategy of the customer design document,
+  e.g. the customer repository's default labels, which the provider's `default_labels` do not apply to.
+  EOT
+  type        = map(string)
+  default     = {}
+  nullable    = false
+
+  validation {
+    condition = alltrue([for key, value in var.labels :
+      can(regex("^[\\p{Ll}\\p{Lo}][\\p{Ll}\\p{Lo}\\p{N}_-]{0,62}$", key)) && can(regex("^[\\p{Ll}\\p{Lo}\\p{N}_-]{0,63}$", value))
+    ])
+    error_message = "Label keys must be 1-63 and values 0-63 lowercase letters, digits, underscores or hyphens, keys starting with a letter, e.g. `team_at_example_com` for an email."
+  }
+}
+
 variable "vpc_service_controls" {
   description = <<-EOT
   The VPC Service Controls perimeter around the Observability project, to which the ingress rule of the organisation-level log sink is added; not added when null:

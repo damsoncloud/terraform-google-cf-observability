@@ -46,6 +46,7 @@ resource "google_monitoring_alert_policy" "security_alerts" {
 
   project      = var.observability_project_id
   display_name = "[${var.domain}] ${local.name_prefix} - ${each.value.display_name}"
+  user_labels  = var.labels
   severity     = each.value.severity
   combiner     = "OR"
 
