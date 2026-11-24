@@ -44,6 +44,8 @@ mock_provider "google" {
   }
 }
 
+mock_provider "google-beta" {}
+
 mock_provider "time" {}
 
 variables {
@@ -399,6 +401,14 @@ run "scc_notifications_submodule" {
       google_service_account_iam_member.deployer.member == "serviceAccount:tf-bootstrap@cmn-cf-bootstrap-a1b2.iam.gserviceaccount.com"
     )
     error_message = "The deployer must be able to attach the workflow's service account."
+  }
+
+  assert {
+    condition = (
+      google_project_service_identity.scc_notifications["workflows.googleapis.com"].project == "cmn-observability-c3d4" &&
+      google_project_service_identity.scc_notifications["eventarc.googleapis.com"].project == "cmn-observability-c3d4"
+    )
+    error_message = "The Workflows and Eventarc service agents must be created before the workflow and the trigger, which need them."
   }
 
   assert {
