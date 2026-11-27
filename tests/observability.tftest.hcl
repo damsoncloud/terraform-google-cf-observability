@@ -697,6 +697,35 @@ run "drive_inventory_export" {
   }
 }
 
+run "drive_inventory_export_dataset_id" {
+  command = plan
+
+  variables {
+    drive_inventory_export = {
+      service_account = "c-123456789012345678901@gcp-sa-statefulreporting.iam.gserviceaccount.com"
+      dataset_id      = "cmn_europe_west4_drive_inventory"
+    }
+  }
+
+  assert {
+    condition     = output.drive_inventory_dataset == "projects/${var.observability_project_id}/datasets/cmn_europe_west4_drive_inventory"
+    error_message = "A given dataset ID must be used, e.g. to keep an existing dataset."
+  }
+}
+
+run "invalid_drive_inventory_dataset_id" {
+  command = plan
+
+  variables {
+    drive_inventory_export = {
+      service_account = "c-123456789012345678901@gcp-sa-statefulreporting.iam.gserviceaccount.com"
+      dataset_id      = "drive-inventory"
+    }
+  }
+
+  expect_failures = [var.drive_inventory_export]
+}
+
 run "drive_inventory_export_submodule" {
   command = plan
 

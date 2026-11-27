@@ -290,15 +290,22 @@ variable "drive_inventory_export" {
   description = <<-EOT
   Google Drive inventory export from Google Workspace into a BigQuery dataset of the Observability project
   ([`modules/drive-inventory-export`](modules/drive-inventory-export)); not set up when null:
-    `service_account`, the email of the Google Workspace service account exporting the inventory, which the org-policies submodule of cf-organization must allow.
+    `service_account`, the email of the Google Workspace service account exporting the inventory, which the org-policies submodule of cf-organization must allow;
+    `dataset_id`, the ID of the dataset, generated as `<common short name>_cf_drive_inventory` when null; set it to keep an existing dataset.
   EOT
   type = object({
     service_account = string
+    dataset_id      = optional(string)
   })
   default = null
 
   validation {
     condition     = var.drive_inventory_export == null || can(regex("^[a-z0-9-]+@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", var.drive_inventory_export.service_account))
     error_message = "The drive_inventory_export service_account must be a service account email."
+  }
+
+  validation {
+    condition     = try(var.drive_inventory_export.dataset_id == null || (can(regex("^[A-Za-z0-9_]+$", var.drive_inventory_export.dataset_id)) && length(var.drive_inventory_export.dataset_id) <= 1024), true)
+    error_message = "The drive_inventory_export dataset_id must be 1-1024 letters, digits or underscores."
   }
 }
