@@ -34,6 +34,6 @@ module "drive_inventory_export" {
 
   project_id      = var.observability_project_id
   region          = var.region
-  dataset_id      = replace("${local.common_short_name}-cf-drive-inventory", "-", "_")
+  dataset_id      = coalesce(var.drive_inventory_export.dataset_id, replace("${local.common_short_name}-cf-drive-inventory", "-", "_"))
   service_account = var.drive_inventory_export.service_account
 }
